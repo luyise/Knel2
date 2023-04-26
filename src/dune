@@ -1,0 +1,7 @@
+(include_subdirs unqualified)
+
+(executable
+	(promote (until-clean))
+	(preprocess (pps ppx_deriving.show))
+	(name main)
+	(modules :standard \ ))
