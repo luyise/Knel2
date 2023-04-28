@@ -21,8 +21,8 @@ let new_ident
       find_aux (n+1)
     else id'
   in
-  if List.mem init_id id_pool then 
-    init_id 
+  if not (List.mem init_id id_pool) then 
+    init_id
   else find_aux 2
 
 (* Rename an identifiant into another in a given term *)
