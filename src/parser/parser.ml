@@ -182,19 +182,19 @@ let add_custom_rule (type a) (ps : parser_state) (prio : int) : a parser_rule ->
     begin match ps.ints.(prio) with
       | NoRule -> ps.ints.(prio) <- BasicRules [rule]
       | BasicRules l -> ps.ints.(prio) <- BasicRules (rule::l)
-      | _ -> failwith "All ready a left associative rule at this priority"
+      | _ -> failwith "Allready a left associative rule at this priority"
     end
   | Units -> fun rule ->
     begin match ps.units.(prio) with
       | NoRule -> ps.units.(prio) <- BasicRules [rule]
       | BasicRules l -> ps.units.(prio) <- BasicRules (rule::l)
-      | _ -> failwith "All ready a left associative rule at this priority"
+      | _ -> failwith "Allready a left associative rule at this priority"
     end
   | Terms -> fun rule ->
     begin match ps.terms.(prio) with
       | NoRule -> ps.terms.(prio) <- BasicRules [rule]
       | BasicRules l -> ps.terms.(prio) <- BasicRules (rule::l)
-      | _ -> failwith "All ready a left associative rule at this priority"
+      | _ -> failwith "Allready a left associative rule at this priority"
     end
       
 let add_left_assoc (type a) (ps : parser_state) (prio : int) : a parser_rule -> (a->a) parsing -> unit = function
@@ -203,19 +203,19 @@ let add_left_assoc (type a) (ps : parser_state) (prio : int) : a parser_rule -> 
     begin match ps.ints.(prio) with
       | NoRule -> ps.ints.(prio) <- LeftAssoc [rule]
       | LeftAssoc l -> ps.ints.(prio) <- LeftAssoc (rule::l)
-      | _ -> failwith "All ready a non-left associative rule at this priority"
+      | _ -> failwith "Allready a non-left associative rule at this priority"
     end
   | Units -> fun rule ->
     begin match ps.units.(prio) with
       | NoRule -> ps.units.(prio) <- LeftAssoc [rule]
       | LeftAssoc l -> ps.units.(prio) <- LeftAssoc (rule::l)
-      | _ -> failwith "All ready a non-left associative rule at this priority"
+      | _ -> failwith "Allready a non-left associative rule at this priority"
     end
   | Terms -> fun rule ->
     begin match ps.terms.(prio) with
       | NoRule -> ps.terms.(prio) <- LeftAssoc [rule]
       | LeftAssoc l -> ps.terms.(prio) <- LeftAssoc (rule::l)
-      | _ -> failwith "All ready a non-left associative rule at this priority"
+      | _ -> failwith "Allready a non-left associative rule at this priority"
     end
       
 let gen_p_state () = {
