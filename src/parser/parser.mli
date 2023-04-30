@@ -15,7 +15,7 @@ val parse : parser_state -> 'a parser_rule -> string -> 'a option
 
 val map : 'a parsing -> ('a -> 'b) -> 'b parsing
 
-val get_loc : int parsing
+val get_loc : Syntax.position parsing
 
 val match_alpha : char parsing
 
@@ -37,19 +37,10 @@ val combine_rules : 'a parsing -> 'b parsing -> ('a -> 'b -> 'c) -> 'c parsing
 
 val get_rules : 'a parser_rule -> 'a parsing
 
-
 val match_int : int parsing
-
-val match_add : (int -> int) parsing
-
-val match_sub : (int -> int) parsing
-
-val match_mul : (int -> int) parsing
-
-val match_div : (int -> int) parsing
 
 val add_custom_rule : parser_state -> int -> 'a parser_rule -> 'a parsing -> unit
 
 val add_left_assoc : parser_state -> int -> 'a parser_rule -> ('a -> 'a) parsing -> unit
 
-val p_state : parser_state
+val gen_p_state : unit -> parser_state

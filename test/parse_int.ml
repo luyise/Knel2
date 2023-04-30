@@ -1,6 +1,19 @@
 open Knel_lib
 open Parser
 
+let match_add : (int -> int) parsing =
+  combine_rules (match_char '+') (get_rules Ints) (fun _ j i -> i + j)
+
+let match_sub : (int -> int) parsing =
+  combine_rules (match_char '-') (get_rules Ints) (fun _ j i -> i - j)
+
+let match_mul : (int -> int) parsing =
+  combine_rules (match_char '*') (get_rules Ints) (fun _ j i -> i * j)
+
+let match_div : (int -> int) parsing =
+  combine_rules (match_char '/') (get_rules Ints) (fun _ j i -> i / j)
+
+let p_state = gen_p_state ()
 let () = add_custom_rule p_state 0 Ints match_int
 let () = add_left_assoc p_state 50 Ints match_add
 let () = add_left_assoc p_state 50 Ints match_sub

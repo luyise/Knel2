@@ -1,5 +1,23 @@
 
-type parsing_state = string * int
+type parsing_state = {
+  str : string;
+  file_name : string;
+  pos : int;
+  line : int;
+  char_line : int;
+}
+
+let finished p_state = String.length p_state.str <= p_state.pos
+
+let get_char p_state = p_state.str.[p_state.pos]
+
+let incr_pos p_state =
+  let (line, char_line) = if get_char p_state = '\n'
+  then (p_state.line + 1, 0)
+  else (p_state.line, p_state.char_line + 1) in
+  {p_state with line; char_line; pos = p_state.pos + 1 }
+
+let get_pos p_state = (p_state.file_name, p_state.line, p_state.char_line)
 
 let max_prio = 100
 (* type priority = int * int *)
@@ -80,41 +98,41 @@ let parsing_of_parsers (l : 'a parsers) (self : 'a parsing) : 'a parsing = fun p
         end
   in aux2 p
 
-let get_loc : int parsing = fun _ _ (str, pos) ->
+let get_loc : Syntax.position parsing = fun _ _ c_state ->
   (* TODO correct position *)
-  Some (pos, (str, pos))
+  Some (get_pos c_state, c_state)
 
-let match_alpha : char parsing = fun _ _ (str, pos) ->
-  if pos >= String.length str
+let match_alpha : char parsing = fun _ _ c_state ->
+  if finished c_state
   then None
-  else if ('a' <= str.[pos] && str.[pos] <= 'z')
-      || ('A' <= str.[pos] && str.[pos] <= 'Z')
-    then Some (str.[pos], (str, pos + 1))
+  else if ('a' <= get_char c_state && get_char c_state <= 'z')
+      || ('A' <= get_char c_state && get_char c_state <= 'Z')
+    then Some (get_char c_state, incr_pos c_state)
     else None
 
-let rec match_wspace : unit parsing = fun prio p_state (str, pos) ->
-  if String.length str <= pos || (str.[pos] <> ' ' && str.[pos] <> '\t' && str.[pos] <> '\n')
-  then Some ((), (str, pos))
-  else match_wspace prio p_state (str, pos + 1)
+let rec match_wspace : unit parsing = fun prio p_state c_state ->
+  if finished c_state || (get_char c_state <> ' ' && get_char c_state <> '\t' && get_char c_state <> '\n')
+  then Some ((), c_state)
+  else match_wspace prio p_state (incr_pos c_state)
 
 let match_alphas : string parsing =
     (fold_left (map match_alpha (String.make 1)) (map match_alpha (String.make 1)) String.cat)
 
-let match_char c : unit parsing = fun _ _ (str, pos) ->
-  if pos >= String.length str || str.[pos] <> c
+let match_char c : unit parsing = fun _ _ c_state ->
+  if finished c_state || get_char c_state <> c
   then None
-  else Some ((), (str, pos + 1))
+  else Some ((), incr_pos c_state)
 
-let match_string s : unit parsing = fun _ _ (str, pos) ->
-  if pos + String.length s >= String.length str
+let match_string s : unit parsing = fun _ _ c_state ->
+  if c_state.pos + String.length s >= String.length c_state.str
   then None
   else 
     let b = ref true in
     for i = 0 to String.length s - 1 do
-      b := !b && s.[i] = str.[pos + i]
+      b := !b && s.[i] = c_state.str.[c_state.pos + i]
     done;
     if !b
-    then Some ((), (str, pos + String.length s))
+    then Some ((), {c_state with pos = c_state.pos + String.length s}) (* TODO : correct incorrect line count *)
     else None
 
 let to_option (r : 'a parsing) : 'a option parsing =
@@ -148,27 +166,15 @@ let rec get_rules : type a. a parser_rule -> a parsing = function
   | Ints  -> fun p s -> parsing_of_parsers s.ints   (get_rules Ints) p s
   | Terms  -> fun p s -> parsing_of_parsers s.terms (get_rules Terms) p s
 
-let match_int : int parsing = fun _ _ (s, pos) ->
-  if String.length s <= pos || s.[pos] < '0' || s.[pos] > '9'
+let match_int : int parsing = fun _ _ c_state ->
+  if finished c_state || get_char c_state < '0' || get_char c_state > '9'
   then None
   else
-    let rec aux pos n =
-      if String.length s <= pos || s.[pos] < '0' || s.[pos] > '9'
-      then Some (n, (s, pos))
-      else aux (pos + 1) (n * 10 + int_of_char s.[pos] - int_of_char '0')
-    in aux pos 0
-
-let match_add : (int -> int) parsing =
-    combine_rules (match_char '+') (get_rules Ints) (fun _ j i -> i + j)
-
-let match_sub : (int -> int) parsing =
-    combine_rules (match_char '-') (get_rules Ints) (fun _ j i -> i - j)
-
-let match_mul : (int -> int) parsing =
-    combine_rules (match_char '*') (get_rules Ints) (fun _ j i -> i * j)
-
-let match_div : (int -> int) parsing =
-    combine_rules (match_char '/') (get_rules Ints) (fun _ j i -> i / j)
+    let rec aux c_state n =
+      if finished c_state || get_char c_state < '0' || get_char c_state > '9'
+      then Some (n, c_state)
+      else aux (incr_pos c_state) (n * 10 + int_of_char (get_char c_state) - int_of_char '0')
+    in aux c_state 0
 
 let add_custom_rule (type a) (ps : parser_state) (prio : int) : a parser_rule -> a parsing -> unit = function
   | Custom _ -> failwith "NYI"
@@ -212,14 +218,14 @@ let add_left_assoc (type a) (ps : parser_state) (prio : int) : a parser_rule -> 
       | _ -> failwith "All ready a non-left associative rule at this priority"
     end
       
-let p_state = {
+let gen_p_state () = {
   units = Array.make (max_prio + 1) NoRule;
   ints = Array.make (max_prio + 1) NoRule;
   terms = Array.make (max_prio + 1) NoRule;
 }
 
 
-let parse (parser : parser_state) rule s =
-  match get_rules rule max_prio parser (s, 0) with
-  | Some (v, (_, p)) when p = String.length s -> Some v
+let parse (parser : parser_state) rule str =
+  match get_rules rule max_prio parser {str; line = 0; pos = 0; char_line = 0; file_name = "no-name"} with
+  | Some (v, c_state) when finished c_state -> Some v
   | _ -> None
