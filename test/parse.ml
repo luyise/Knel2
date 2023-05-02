@@ -19,15 +19,15 @@ let () = add_custom_rule p_state 0 Terms (combine_rules
     (fun loc_start (i, loc_end) -> {term = Var (i, None); loc = loc_start}))
 
 
-let () = add_custom_rule p_state 80 Terms (wrap_loc (
+let () = add_right_assoc p_state 80 Terms (
   combine_rules
     (combine_rules (match_char '\\') (ws_before match_alphas) (fun _ i -> i))
     (combine_rules
       (combine_rules (ws_before (match_char ':')) (ws_before (get_rules Terms)) (fun _ t -> t))
-      (combine_rules (ws_before (match_string "->")) (ws_before (get_rules Terms)) (fun _ t -> t))
-      (fun t1 t2 -> (t1, t2))
+      (combine_rules (ws_before (match_string "->")) match_wspace (fun _ _ -> ()))
+      (fun t1 _ -> t1)
     )
-    (fun i (t1, t2) -> Lam (i, t1, t2))))
+    (fun i t1 t2 -> {term = Lam (i, t1, t2); loc = t1.loc}))
 
 let () = add_left_assoc p_state 40 Terms
   (map (ws_before (get_rules Terms)) (fun a f -> let (fname, l1, _) = f.loc in

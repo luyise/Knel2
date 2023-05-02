@@ -32,6 +32,7 @@ and 'a rule =
   | NoRule
   | BasicRules : 'a parsing list -> 'a rule
   | LeftAssoc : ('a -> 'a) parsing list -> 'a rule
+  | RightAssoc : ('a -> 'a) parsing list -> 'a rule
 and 'a parsers = 'a rule array
 and parser_state = {
   units : unit parsers;
@@ -73,6 +74,25 @@ let fold_leftL (r1 : 'a parsing) (casesL : (('a -> 'a) parsing) list) : 'a parsi
         | Some (v', c_state) ->  aux v' c_state
         | None -> Some (v, c_state)
       in aux init c_state
+
+let fold_leftR (r1 : 'a parsing) (casesL : (('a -> 'a) parsing) list) : 'a parsing =
+  fun prio p_state c_state ->
+    let rec aux1 l c_state =
+      match l with
+      | [] -> None
+      | r::tl -> match r prio p_state c_state with
+        | None -> aux1 tl c_state
+        | out -> out
+    in
+    let rec aux c_state =
+      match aux1 casesL c_state with
+      | Some (f, c_state') ->
+        begin match aux c_state' with
+          | None -> r1 prio p_state c_state
+          | Some (v, c_state) -> Some (f v, c_state)
+        end
+      | None -> r1 prio p_state c_state
+    in aux c_state
       
 let parsing_of_parsers (l : 'a parsers) (self : 'a parsing) : 'a parsing = fun p state s ->
   let rec aux p : 'a parsing list -> ('a * parsing_state) option = function
@@ -87,7 +107,7 @@ let parsing_of_parsers (l : 'a parsers) (self : 'a parsing) : 'a parsing = fun p
     else match l.(p) with
       | NoRule -> aux2 (p - 1)
       | BasicRules rules ->  
-        begin match aux p rules with
+        begin match aux (p - 1) rules with
           | None -> aux2 (p - 1)
           | out -> out
         end
@@ -96,7 +116,12 @@ let parsing_of_parsers (l : 'a parsers) (self : 'a parsing) : 'a parsing = fun p
           | None -> aux2 (p - 1)
           | out -> out
         end
-  in aux2 p
+      | RightAssoc possibilities ->
+        begin match fold_leftR self possibilities (p - 1) state s with
+          | None -> aux2 (p - 1)
+          | out -> out
+        end
+    in aux2 p
 
 let get_loc : Syntax.position parsing = fun _ _ c_state ->
   (* TODO correct position *)
@@ -182,40 +207,61 @@ let add_custom_rule (type a) (ps : parser_state) (prio : int) : a parser_rule ->
     begin match ps.ints.(prio) with
       | NoRule -> ps.ints.(prio) <- BasicRules [rule]
       | BasicRules l -> ps.ints.(prio) <- BasicRules (rule::l)
-      | _ -> failwith "Allready a left associative rule at this priority"
+      | _ -> failwith "Already a left associative rule at this priority"
     end
   | Units -> fun rule ->
     begin match ps.units.(prio) with
       | NoRule -> ps.units.(prio) <- BasicRules [rule]
       | BasicRules l -> ps.units.(prio) <- BasicRules (rule::l)
-      | _ -> failwith "Allready a left associative rule at this priority"
+      | _ -> failwith "Already a left associative rule at this priority"
     end
   | Terms -> fun rule ->
     begin match ps.terms.(prio) with
       | NoRule -> ps.terms.(prio) <- BasicRules [rule]
       | BasicRules l -> ps.terms.(prio) <- BasicRules (rule::l)
-      | _ -> failwith "Allready a left associative rule at this priority"
+      | _ -> failwith "Already a left associative rule at this priority"
     end
-      
+
 let add_left_assoc (type a) (ps : parser_state) (prio : int) : a parser_rule -> (a->a) parsing -> unit = function
   | Custom _ -> failwith "NYI"
   | Ints -> fun rule ->
     begin match ps.ints.(prio) with
       | NoRule -> ps.ints.(prio) <- LeftAssoc [rule]
       | LeftAssoc l -> ps.ints.(prio) <- LeftAssoc (rule::l)
-      | _ -> failwith "Allready a non-left associative rule at this priority"
+      | _ -> failwith "Already a non-left associative rule at this priority"
     end
   | Units -> fun rule ->
     begin match ps.units.(prio) with
       | NoRule -> ps.units.(prio) <- LeftAssoc [rule]
       | LeftAssoc l -> ps.units.(prio) <- LeftAssoc (rule::l)
-      | _ -> failwith "Allready a non-left associative rule at this priority"
+      | _ -> failwith "Already a non-left associative rule at this priority"
     end
   | Terms -> fun rule ->
     begin match ps.terms.(prio) with
       | NoRule -> ps.terms.(prio) <- LeftAssoc [rule]
       | LeftAssoc l -> ps.terms.(prio) <- LeftAssoc (rule::l)
-      | _ -> failwith "Allready a non-left associative rule at this priority"
+      | _ -> failwith "Already a non-left associative rule at this priority"
+    end
+
+let add_right_assoc (type a) (ps : parser_state) (prio : int) : a parser_rule -> (a->a) parsing -> unit = function
+  | Custom _ -> failwith "NYI"
+  | Ints -> fun rule ->
+    begin match ps.ints.(prio) with
+      | NoRule -> ps.ints.(prio) <- RightAssoc [rule]
+      | RightAssoc l -> ps.ints.(prio) <- RightAssoc (rule::l)
+      | _ -> failwith "Already a non-left associative rule at this priority"
+    end
+  | Units -> fun rule ->
+    begin match ps.units.(prio) with
+      | NoRule -> ps.units.(prio) <- RightAssoc [rule]
+      | RightAssoc l -> ps.units.(prio) <- RightAssoc (rule::l)
+      | _ -> failwith "Already a non-right associative rule at this priority"
+    end
+  | Terms -> fun rule ->
+    begin match ps.terms.(prio) with
+      | NoRule -> ps.terms.(prio) <- RightAssoc [rule]
+      | RightAssoc l -> ps.terms.(prio) <- RightAssoc (rule::l)
+      | _ -> failwith "Already a non-right associative rule at this priority"
     end
       
 let gen_p_state () = {

@@ -43,4 +43,6 @@ val add_custom_rule : parser_state -> int -> 'a parser_rule -> 'a parsing -> uni
 
 val add_left_assoc : parser_state -> int -> 'a parser_rule -> ('a -> 'a) parsing -> unit
 
+val add_right_assoc : parser_state -> int -> 'a parser_rule -> ('a -> 'a) parsing -> unit
+
 val gen_p_state : unit -> parser_state
