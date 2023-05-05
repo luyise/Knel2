@@ -11,7 +11,13 @@ type 'a parser_rule =
 
 type parser_state
 
+val fold_left : 'a parsing -> 'b parsing -> ('a -> 'b -> 'a) -> 'a parsing
+
+val fold_right : 'b parsing -> 'a parsing -> ('b -> 'a -> 'a) -> 'a parsing
+
 val parse : parser_state -> 'a parser_rule -> string -> 'a option
+
+val parse_raw : parser_state -> 'a parsing -> string -> 'a option
 
 val map : 'a parsing -> ('a -> 'b) -> 'b parsing
 
@@ -21,9 +27,15 @@ val match_alpha : char parsing
 
 val match_alphas : string parsing
 
+val match_falphas : (char -> bool) -> string parsing
+
 val match_wspace : unit parsing
 
+val match_wspace_ne : unit parsing
+
 val match_char : char -> unit parsing
+
+val match_fchar : (char -> bool) -> char parsing
 
 val match_string : string -> unit parsing
 
@@ -33,7 +45,10 @@ val and_operator : 'a parsing -> unit parsing
 
 val not_operator : 'a parsing -> unit parsing
 
-val combine_rules : 'a parsing -> 'b parsing -> ('a -> 'b -> 'c) -> 'c parsing
+val seq_operator : 'a parsing -> 'b parsing -> ('a -> 'b -> 'c) -> 'c parsing
+
+val or_operator : 'a parsing -> 'a parsing -> 'a parsing
+
 
 val get_rules : 'a parser_rule -> 'a parsing
 
