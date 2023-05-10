@@ -114,12 +114,17 @@ let wrap_loc : naked_term parsing -> term parsing = fun r ->
 let () = add_custom_rule p_state 0 terms match_var
 
 let () = add_right_assoc p_state 80 terms
-  (match parse_raw p_state id_decls "'\\' v ':' x '->' y" with
+  (match parse_full_raw p_state id_decls "'\\' v ':' x '->' y" with
   | None -> assert false
   | Some f -> build_parsing (build_fold_right_inner (handle_ident (ISet.add "v" ISet.empty) f)) (add_loc (Lam ("v", add_loc (Var ("x", None)), add_loc (Var ("y", None))))))
 
+let () = add_right_assoc p_state 80 terms
+  (match parse_full_raw p_state id_decls "'Pi ' v ':' x ',' y" with
+  | None -> assert false
+  | Some f -> build_parsing (build_fold_right_inner (handle_ident (ISet.add "v" ISet.empty) f)) (add_loc (Pi ("v", add_loc (Var ("x", None)), add_loc (Var ("y", None))))))
+
 let () = add_left_assoc p_state 40 terms
-  (match parse_raw p_state id_decls "x y" with
+  (match parse_full_raw p_state id_decls "x y" with
   | None -> assert false
   | Some f -> build_parsing (build_fold_left_inner (handle_ident ISet.empty f)) (add_loc (App (add_loc (Var ("x", None)), add_loc (Var ("y", None))))))
 

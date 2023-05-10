@@ -1,5 +1,7 @@
 type parsing_state
 
+val get_pos : parsing_state -> Syntax.position
+
 module Make : functor (Elt : sig type t end) ->
   sig
     type 'a parsing
@@ -44,8 +46,14 @@ module Make : functor (Elt : sig type t end) ->
     val add_right_assoc :
       parser_state -> int -> 'a parser_rule -> ('a -> 'a) parsing -> unit
     val gen_p_state : unit -> parser_state
-    val parse : parser_state -> 'a parser_rule -> string -> 'a option
-    val parse_raw :
+
+    val check_finished : parsing_state -> bool
+
+    val parse_single : parser_state -> 'a parser_rule -> parsing_state -> ('a * parsing_state) option 
+    val restart : parsing_state -> parsing_state
+
+    val parse_full : parser_state -> 'a parser_rule -> string -> 'a option
+    val parse_full_raw :
       parser_state ->
       'a parsing ->
       string -> 'a option

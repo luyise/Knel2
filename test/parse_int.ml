@@ -23,7 +23,7 @@ let () = add_left_assoc p_state 30 default match_mul
 let () = add_left_assoc p_state 30 default match_div
 
 let test_parsing () =
-  Alcotest.(check (option int)) "big expr" (parse p_state default "1+3*4/3/1*1000/3/4/5-6-2") (Some (1+3*4/3/1*1000/3/4/5-6-2))
+  Alcotest.(check (option int)) "big expr" (parse_full p_state default "1+3*4/3/1*1000/3/4/5-6-2") (Some (1+3*4/3/1*1000/3/4/5-6-2))
 
 
 let test = [

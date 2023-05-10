@@ -1,23 +1,28 @@
 
-type parsing_state = {
-  str : string;
-  file_name : string;
-  pos : int;
+type pos = {
+  total : int;
   line : int;
   char_line : int;
 }
 
-let finished p_state = String.length p_state.str <= p_state.pos
+type parsing_state = {
+  str : string;
+  file_name : string;
+  pos : pos;
+  pos_history : pos list;
+}
 
-let get_char p_state = p_state.str.[p_state.pos]
+let finished p_state = String.length p_state.str <= p_state.pos.total
+
+let get_char p_state = p_state.str.[p_state.pos.total]
 
 let incr_pos p_state =
   let (line, char_line) = if get_char p_state = '\n'
-  then (p_state.line + 1, 0)
-  else (p_state.line, p_state.char_line + 1) in
-  {p_state with line; char_line; pos = p_state.pos + 1 }
+  then (p_state.pos.line + 1, 0)
+  else (p_state.pos.line, p_state.pos.char_line + 1) in
+  {p_state with pos = {line; char_line; total = p_state.pos.total + 1 }}
 
-let get_pos p_state = (p_state.file_name, p_state.line, p_state.char_line)
+let get_pos p_state = (p_state.file_name, p_state.pos.line, p_state.pos.char_line)
 
 let max_prio = 100
 (* type priority = int * int *)
@@ -174,15 +179,15 @@ module Make (Elt : sig type t end) = struct
     else Some (get_char c_state, incr_pos c_state)
             
   let match_string s : unit parsing = fun _ _ c_state ->
-    if c_state.pos + String.length s > String.length c_state.str
+    if c_state.pos.total + String.length s > String.length c_state.str
     then None
     else 
       let b = ref true in
       for i = 0 to String.length s - 1 do
-        b := !b && s.[i] = c_state.str.[c_state.pos + i]
+        b := !b && s.[i] = c_state.str.[c_state.pos.total + i]
       done;
       if !b
-      then Some ((), {c_state with pos = c_state.pos + String.length s}) (* TODO : correct incorrect line count *)
+      then Some ((), {c_state with pos = {c_state.pos with total = c_state.pos.total + String.length s}}) (* TODO : correct incorrect line count *)
       else None
 
   let match_falphas (f : char -> bool): string parsing =
@@ -290,14 +295,25 @@ module Make (Elt : sig type t end) = struct
     terms = Array.make (max_prio + 1) NoRule;
   }
 
+  let check_finished (parser : parsing_state) : bool =
+    parser.pos.total >= String.length parser.str
 
-  let parse (parser : parser_state) rule str =
-    match get_rules rule max_prio parser {str; line = 0; pos = 0; char_line = 0; file_name = "no-name"} with
+  let parse_single (parser : parser_state) rule c_state =
+    match get_rules rule max_prio parser c_state with
+      | Some (v, c_state) -> Some (v, {c_state with pos_history = c_state.pos :: c_state.pos_history })
+      | None -> None
+
+  let restart (c_state : parsing_state) =
+    let pos = {total = 0; line = 0; char_line = 0} in
+    {c_state with pos_history = [pos]; pos}
+
+  let parse_full (parser : parser_state) rule str =
+    match get_rules rule max_prio parser {str; pos = {line = 0; total = 0; char_line = 0}; file_name = "no-name"; pos_history = []} with
     | Some (v, c_state) when finished c_state -> Some v
     | _ -> None
 
-  let parse_raw (parser : parser_state) rule str =
-    match rule max_prio parser {str; line = 0; pos = 0; char_line = 0; file_name = "no-name"} with
+  let parse_full_raw (parser : parser_state) rule str =
+    match rule max_prio parser {str; pos = {line = 0; total = 0; char_line = 0}; file_name = "no-name"; pos_history = []} with
     | Some (v, c_state) when finished c_state -> Some v
     | _ -> None
 end
