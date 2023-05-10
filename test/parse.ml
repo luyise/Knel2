@@ -12,12 +12,23 @@ let unwrap = function
 
 let test_fun_fun () =
   Alcotest.(check bool) "parse 01" (is_some (parse p_state terms "\\x:i->\\x:i->x")) true;
-  Alcotest.(check bool) "parse 02" (is_some (parse p_state terms "\\x:i->\\y:option i->y x")) true;
+  Alcotest.(check bool) "parse 02" (is_some (parse p_state terms "\\x:i->\\y:option i->y x y")) true;
   Alcotest.(check bool) "parse 03" (is_some (parse p_state terms "\\x:i->\\y:option i->")) false;
   Alcotest.(check bool) "parse white spaces" (is_some (parse p_state terms "x\t\n\n\t   \t\n x")) true
 
+let test_notation () =
+  Alcotest.(check bool) "parse notation 01" (is_some (parse p_state default "Notation \"x '+' y\" := (add x y) left-assoc 40")) true;
+  Alcotest.(check bool) "parse notation 02" (is_some (parse p_state default "Notation \"x '-' y\" := (sub x y) left-assoc 40")) true;
+  Alcotest.(check bool) "parse notation 03" (is_some (parse p_state default "Notation \"'|' x '|'\" := (abs x ) no-assoc 50")) true;
+  Alcotest.(check bool) "parse notation 04" (is_some (parse p_state default "Notation \"'-' x\" := (neg x) right-assoc 30")) true;
+  Alcotest.(check bool) "parse notation 05" (is_some (parse p_state default "Notation \"x '+' y\" := (add x y) left-assoc")) false;
+  Alcotest.(check bool) "parse notation 06" (is_some (parse p_state default "Notation \"x '-' y\" := (sub x y) 40")) false;
+  Alcotest.(check bool) "parse notation 07" (is_some (parse p_state default "Notation \"'| x '|'\" := (abs x ) no-assoc 50")) false;
+  Alcotest.(check bool) "parse notation 08" (is_some (parse p_state default "Notation \"- x\" := (neg x) right-assoc 30")) false
+
 let test = [
-  ("parsing (short)", `Quick, test_fun_fun)
+  ("parsing (short)", `Quick, test_fun_fun);
+  ("parsing (notation)", `Quick, test_notation)
 ]
 
 let test_alpha () =

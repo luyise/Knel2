@@ -21,6 +21,7 @@ module Make : functor (Elt : sig type t end) ->
     val fold_rightL : 'a parsing -> ('a -> 'a) parsing list -> 'a parsing
 
     val get_loc : Syntax.position parsing
+    val lift_prio : 'a parsing -> 'a parsing
     val match_alpha : char parsing
     val match_wspace : unit parsing
     val match_wspace_ne : unit parsing

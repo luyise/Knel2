@@ -1,17 +1,25 @@
-open Parser_lib
 open Syntax
 
-module IMap = Map.Make(String)
-module ISet = Set.Make(String)
-module P = Parser_lib.Make(struct type t = term end)
-open P
-
-let p_state = gen_p_state ()
 
 type term_decl =
   | Symbol of string
   | Ident of ident
   | Term of ident
+
+type associativity =
+  | LeftAssoc
+  | RightAssoc
+  | NoAssoc
+
+type declaration =
+  | Notation of term_decl list * int * associativity * ident list * term
+
+module IMap = Map.Make(String)
+module ISet = Set.Make(String)
+module P = Parser_lib.Make(struct type t = declaration end)
+open P
+
+let p_state = gen_p_state ()
 
 let id_decl : term_decl parsing =
   or_operator
@@ -114,3 +122,37 @@ let () = add_left_assoc p_state 40 terms
   (match parse_raw p_state id_decls "x y" with
   | None -> assert false
   | Some f -> build_parsing (build_fold_left_inner (handle_ident ISet.empty f)) (add_loc (App (add_loc (Var ("x", None)), add_loc (Var ("y", None))))))
+
+let match_assoc =
+  seq_operator (
+    or_operator
+      (map (match_string "left-assoc") (fun () -> LeftAssoc))
+      (or_operator
+        (map (match_string "right-assoc") (fun () -> RightAssoc))
+        (map (match_string "no-assoc") (fun () -> NoAssoc))
+      )
+    )
+    (
+      not_operator (match_fchar (fun c -> c <> ' '))
+    )
+    (fun a () -> a)
+
+let () = add_custom_rule p_state 0 default (
+  seq_operator
+    (seq_operator
+      (seq_operator
+        (seq_operator (match_string "Notation") (ws_before (match_char '\"')) (fun () () -> ()))
+        (seq_operator (ws_before id_decls) (ws_before (match_char '\"')) (fun decl () -> decl))
+        (fun () decl -> decl))
+      (seq_operator
+        (seq_operator (ws_before (match_string ":=")) (ws_before (match_char '(')) (fun () () -> ()))
+        (seq_operator (map (ws_before (lift_prio (get_rules terms))) (fun t -> t)) (ws_before (match_char ')')) (fun t () -> t))
+        (fun () t -> t))
+      (fun d t -> (d, t)))
+    (seq_operator
+        (ws_before match_assoc)
+        (ws_before match_int)
+        (fun a i -> (i, a)))
+    (fun (decl, t) (prio, assoc) -> Notation (decl, prio, assoc, [], t))
+  |> ws_before
+)

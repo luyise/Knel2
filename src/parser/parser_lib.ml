@@ -142,6 +142,9 @@ module Make (Elt : sig type t end) = struct
     (* TODO correct position *)
     Some (get_pos c_state, c_state)
 
+  let lift_prio : 'a parsing -> 'a parsing = fun r _ parser c_state ->
+      r max_prio parser c_state 
+
   let match_alpha : char parsing = fun _ _ c_state ->
     if finished c_state
     then None
@@ -171,7 +174,7 @@ module Make (Elt : sig type t end) = struct
     else Some (get_char c_state, incr_pos c_state)
             
   let match_string s : unit parsing = fun _ _ c_state ->
-    if c_state.pos + String.length s >= String.length c_state.str
+    if c_state.pos + String.length s > String.length c_state.str
     then None
     else 
       let b = ref true in
