@@ -50,11 +50,11 @@ let test = [
 ]
 
 let test_alpha () =
-  Alcotest.(check bool) "fun x x->x x <> fun x y -> y x" (Typer.is_alpha_eq []
+  Alcotest.(check bool) "fun x x->x x <> fun x y -> y x" (Alpha.is_alpha_eq []
   (unwrap (parse p_state Terms "\\x:i->\\x:i->x x"))
   (unwrap (parse p_state Terms "\\x:i->\\y:i->y x"))
   ) false;
-  Alcotest.(check bool) "fun x x->x <> fun x y -> y" (Typer.is_alpha_eq []
+  Alcotest.(check bool) "fun x x->x <> fun x y -> y" (Alpha.is_alpha_eq []
   (unwrap (parse p_state Terms "\\x:i->\\x:i->x"))
   (unwrap (parse p_state Terms "\\x:i->\\y:i->y"))
   ) true

@@ -1,4 +1,4 @@
-open Kernel
+open Knel_lib
 open Syntax
 open Typer
 
