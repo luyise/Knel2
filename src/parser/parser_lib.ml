@@ -295,6 +295,10 @@ module Make (Elt : sig type t end) = struct
     terms = Array.make (max_prio + 1) NoRule;
   }
 
+  let create_state str file_name =
+    let pos = { total = 0; line = 0; char_line = 0} in
+      { str; pos; file_name; pos_history = [pos] }
+
   let check_finished (parser : parsing_state) : bool =
     parser.pos.total >= String.length parser.str
 
@@ -306,6 +310,20 @@ module Make (Elt : sig type t end) = struct
   let restart (c_state : parsing_state) =
     let pos = {total = 0; line = 0; char_line = 0} in
     {c_state with pos_history = [pos]; pos}
+
+  let change_str (c_state : parsing_state) str : parsing_state * int =
+    let last_same = ref 0 in
+    let min_length = min (String.length str) (String.length c_state.str) in
+    while !last_same < min_length && str.[!last_same] == c_state.str.[!last_same] do
+      incr last_same
+    done;
+    let rec aux = function
+      | [] -> assert false
+      | hd::tl when hd.total <= !last_same -> (0, hd, hd::tl)
+      | _::tl -> let (n, hd', tl') = aux tl in (n + 1, hd', tl')
+    in
+    let (n, pos, pos_history) = aux c_state.pos_history in
+    ({c_state with pos; pos_history; str}, n)
 
   let parse_full (parser : parser_state) rule str =
     match get_rules rule max_prio parser {str; pos = {line = 0; total = 0; char_line = 0}; file_name = "no-name"; pos_history = []} with

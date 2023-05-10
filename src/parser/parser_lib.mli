@@ -49,6 +49,8 @@ module Make : functor (Elt : sig type t end) ->
 
     val check_finished : parsing_state -> bool
 
+    val change_str : parsing_state -> string -> parsing_state * int
+
     val parse_single : parser_state -> 'a parser_rule -> parsing_state -> ('a * parsing_state) option 
     val restart : parsing_state -> parsing_state
 

@@ -11,8 +11,16 @@ type associativity =
   | RightAssoc
   | NoAssoc
 
+type closing =
+  | Qed
+  | Admit
+  | Drop
+
 type declaration =
   | Notation of term_decl list * int * associativity * ident list * term
+  | StartTheorem of ident * term
+  | CloseProof of closing
+  | Tactic of term
 
 module IMap = Map.Make(String)
 module ISet = Set.Make(String)
@@ -50,6 +58,9 @@ let rec handle_ident (iset : ISet.t) = function
 let ws_before : 'a parsing -> 'a parsing = fun r ->
   seq_operator match_wspace r (fun _ i -> i)
 
+let ws_before_ne : 'a parsing -> 'a parsing = fun r ->
+  seq_operator match_wspace_ne r (fun _ i -> i)
+  
 let ws_before_if b p =
   if b
   then seq_operator match_wspace p (fun _ i -> i)
@@ -97,7 +108,7 @@ let rec subst (map : term IMap.t) (t : term) : term = match t.term with
         | Var (v, _) -> {t with term = Pi (v, subst map t1, subst map t2)}
         | _ -> {t with term = Pi (id, subst map t1, subst map t2)}
     end
-  | Op _ | Const _ -> t
+  | Op _ | Const _ | UU _ -> t
 
 let build_parsing (r : (term -> term IMap.t) parsing) (t : term): (term -> term) parsing =
   map r (fun map t' -> subst (map t') t)
@@ -142,7 +153,7 @@ let match_assoc =
     )
     (fun a () -> a)
 
-let () = add_custom_rule p_state 0 default (
+let () = add_custom_rule p_state 30 default (
   seq_operator
     (seq_operator
       (seq_operator
@@ -155,9 +166,33 @@ let () = add_custom_rule p_state 0 default (
         (fun () t -> t))
       (fun d t -> (d, t)))
     (seq_operator
-        (ws_before match_assoc)
-        (ws_before match_int)
-        (fun a i -> (i, a)))
+      (seq_operator (ws_before match_assoc) (ws_before match_int) (fun a i -> (i, a)))
+      (ws_before (match_char '.'))
+      (fun p () -> p))
     (fun (decl, t) (prio, assoc) -> Notation (decl, prio, assoc, [], t))
   |> ws_before
 )
+
+let () = add_custom_rule p_state 0 default
+  (seq_operator
+    (lift_prio (ws_before (get_rules terms)))
+    (ws_before (match_char '.'))
+    (fun t () -> Tactic t))
+
+let () = add_custom_rule p_state 30 default
+  (seq_operator
+    (seq_operator
+      (seq_operator (ws_before (match_string "Theorem")) (ws_before_ne match_alphas) (fun () n -> n))
+      (seq_operator (ws_before (match_char ':')) (ws_before (lift_prio (get_rules terms))) (fun () t -> t))
+      (fun n t -> StartTheorem (n, t)))
+    (ws_before (match_char '.'))
+    (fun d () -> d))
+
+let () = add_custom_rule p_state 30 default
+  (seq_operator (ws_before (match_string "Qed")) (ws_before (match_char '.')) (fun () () -> CloseProof Qed))
+
+let () = add_custom_rule p_state 30 default
+  (seq_operator (ws_before (match_string "Admit")) (ws_before (match_char '.')) (fun () () -> CloseProof Admit))
+
+let () = add_custom_rule p_state 30 default
+  (seq_operator (ws_before (match_string "Drop")) (ws_before (match_char '.')) (fun () () -> CloseProof Drop))
