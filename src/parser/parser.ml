@@ -1,225 +1,163 @@
+open Syntax
 
-type parsing_state = string * int
 
-let max_prio = 100
-(* type priority = int * int *)
+type term_decl =
+  | Symbol of string
+  | Ident of ident
+  | Term of ident
 
-type 'a parser_rule =
-  | Custom : 'a parsing -> 'a parser_rule
-  | Units : unit parser_rule
-  | Ints : int parser_rule
-  | Terms : Syntax.term parser_rule
-and 'a parsing = int -> parser_state -> parsing_state -> ('a * parsing_state) option
-and 'a rule =
-  | NoRule
-  | BasicRules : 'a parsing list -> 'a rule
-  | LeftAssoc : ('a -> 'a) parsing list -> 'a rule
-and 'a parsers = 'a rule array
-and parser_state = {
-  units : unit parsers;
-  ints : int parsers;
-  terms : Syntax.term parsers;
-}
+type associativity =
+  | LeftAssoc
+  | RightAssoc
+  | NoAssoc
 
-let map (r : 'a parsing) (f : 'a -> 'b) : 'b parsing =
-  fun prio p_state c_state ->
-    match r prio p_state c_state with
-    | None -> None
-    | Some (v, c_state') -> Some (f v, c_state')
+type declaration =
+  | Notation of term_decl list * int * associativity * ident list * term
 
-let fold_left (r1 : 'a parsing) (b2 : 'b parsing) (f : 'a -> 'b -> 'a) : 'a parsing =
-  fun prio p_state c_state ->
-    match r1 prio p_state c_state with
-    | None -> None
-    | Some (init, c_state) ->
-      let rec aux v c_state =
-        match b2 prio p_state c_state with
-        | Some (v', c_state) ->  aux (f v v') c_state
-        | None -> Some (v, c_state)
-      in aux init c_state
+module IMap = Map.Make(String)
+module ISet = Set.Make(String)
+module P = Parser_lib.Make(struct type t = declaration end)
+open P
 
-let fold_leftL (r1 : 'a parsing) (casesL : (('a -> 'a) parsing) list) : 'a parsing =
-  fun prio p_state c_state ->
-    match r1 prio p_state c_state with
-    | None -> None
-    | Some (init, c_state) ->
-      let rec aux1 v l c_state =
-        match l with
-        | [] -> None
-        | r::tl -> match r prio p_state c_state with
-          | None -> aux1 v tl c_state
-          | Some (f, c_state') -> Some (f v, c_state')
-      in
-      let rec aux v c_state =
-        match aux1 v casesL c_state with
-        | Some (v', c_state) ->  aux v' c_state
-        | None -> Some (v, c_state)
-      in aux init c_state
-      
-let parsing_of_parsers (l : 'a parsers) (self : 'a parsing) : 'a parsing = fun p state s ->
-  let rec aux p : 'a parsing list -> ('a * parsing_state) option = function
-    | [] -> None
-    | hd::tl -> match hd p state s with
-      | None -> aux p tl
-      | out -> out
-  in
-  let rec aux2 p =
-    if p < 0
-    then None
-    else match l.(p) with
-      | NoRule -> aux2 (p - 1)
-      | BasicRules rules ->  
-        begin match aux p rules with
-          | None -> aux2 (p - 1)
-          | out -> out
-        end
-      | LeftAssoc possibilities ->
-        begin match fold_leftL self possibilities (p - 1) state s with
-          | None -> aux2 (p - 1)
-          | out -> out
-        end
-  in aux2 p
+let p_state = gen_p_state ()
 
-let get_loc : int parsing = fun _ _ (str, pos) ->
-  (* TODO correct position *)
-  Some (pos, (str, pos))
+let id_decl : term_decl parsing =
+  or_operator
+    (* (or_operator *)
+      (map match_alphas (fun i -> Term i))
+      (* (seq_operator (match_char '@') match_alphas (fun _ i -> Ident i))) *)
+    (seq_operator
+      (seq_operator (match_char '\'') (match_falphas (fun c -> c <> '\'')) (fun _ s -> Symbol s))
+      (match_char '\'')
+      (fun t _ -> t))
 
-let match_alpha : char parsing = fun _ _ (str, pos) ->
-  if pos >= String.length str
-  then None
-  else if ('a' <= str.[pos] && str.[pos] <= 'z')
-      || ('A' <= str.[pos] && str.[pos] <= 'Z')
-    then Some (str.[pos], (str, pos + 1))
-    else None
+let match_var =
+    seq_operator (seq_operator get_loc match_alphas (fun loc v -> (loc, v))) get_loc (fun (loc_start, t) _loc_end -> {term = Var (t, None); loc = loc_start})
 
-let rec match_wspace : unit parsing = fun prio p_state (str, pos) ->
-  if String.length str <= pos || (str.[pos] <> ' ' && str.[pos] <> '\t' && str.[pos] <> '\n')
-  then Some ((), (str, pos))
-  else match_wspace prio p_state (str, pos + 1)
+let parsing_of_tdecl = function
+  | Symbol str -> map (match_string str) (fun _ l -> l)
+  | Ident id -> seq_operator match_alphas get_loc (fun t loc l -> (id, {term = Var (t, None); loc})::l)
+  | Term id -> map (get_rules terms) (fun t l -> (id,t)::l)
 
-let match_alphas : string parsing =
-    (fold_left (map match_alpha (String.make 1)) (map match_alpha (String.make 1)) String.cat)
+let id_decls : term_decl list parsing =
+  fold_right (seq_operator id_decl match_wspace_ne (fun i _ -> i)) (map id_decl (fun t -> [t])) List.cons
 
-let match_char c : unit parsing = fun _ _ (str, pos) ->
-  if pos >= String.length str || str.[pos] <> c
-  then None
-  else Some ((), (str, pos + 1))
+let rec handle_ident (iset : ISet.t) = function
+  | [] -> []
+  | Term t::tl when ISet.mem t iset -> Ident t::handle_ident iset tl
+  | t::tl -> t::handle_ident iset tl
 
-let match_string s : unit parsing = fun _ _ (str, pos) ->
-  if pos + String.length s >= String.length str
-  then None
-  else 
-    let b = ref true in
-    for i = 0 to String.length s - 1 do
-      b := !b && s.[i] = str.[pos + i]
-    done;
-    if !b
-    then Some ((), (str, pos + String.length s))
-    else None
+let ws_before : 'a parsing -> 'a parsing = fun r ->
+  seq_operator match_wspace r (fun _ i -> i)
 
-let to_option (r : 'a parsing) : 'a option parsing =
-  fun p p_state c_state ->
-    match r p p_state c_state with
-    | None -> Some (None, c_state)
-    | Some (v, c_state) -> Some (Some v, c_state)
+let ws_before_if b p =
+  if b
+  then seq_operator match_wspace p (fun _ i -> i)
+  else p
 
-let and_operator (r : 'a parsing) : unit parsing =
-  fun p p_state c_state ->
-      match r p p_state c_state with
-      | None -> None
-      | Some _ -> Some ((), c_state)
+let rec rule_decl : term_decl list -> term IMap.t parsing = function
+  | [] -> map get_loc (fun _ -> IMap.empty)
+  | Term hd::tl -> seq_operator (get_rules terms) (ws_before_if (tl <> []) (rule_decl tl)) (fun t tl -> IMap.add hd t tl)
+  | Ident hd::tl -> seq_operator match_var (ws_before_if (tl <> []) (rule_decl tl)) (fun t tl -> IMap.add hd t tl)
+  | Symbol str::tl -> seq_operator (match_string str) (ws_before_if (tl <> []) (rule_decl tl)) (fun _ tl -> tl)
 
-let not_operator (r : 'a parsing) : unit parsing =
-  fun p p_state c_state ->
-      match r p p_state c_state with
-      | None -> Some ((), c_state)
-      | Some _ -> None
-      
-let combine_rules r1 r2 combinator p p_state c_state =
-  match r1 p p_state c_state with
-  | None -> None
-  | Some (a1, c_state') -> match r2 p p_state c_state' with
-    | None -> None
-    | Some (a2, state'') -> Some (combinator a1 a2, state'')
+let rec extract_last = function
+  | [] -> assert false
+  | hd::[] -> (hd, [])
+  | hd::tl -> let (last, tl') = extract_last tl in (last, hd::tl')
 
-let rec get_rules : type a. a parser_rule -> a parsing = function
-  | Custom f -> f
-  | Units -> fun p s -> parsing_of_parsers s.units  (get_rules Units) p s
-  | Ints  -> fun p s -> parsing_of_parsers s.ints   (get_rules Ints) p s
-  | Terms  -> fun p s -> parsing_of_parsers s.terms (get_rules Terms) p s
+let build_fold_left_inner (t : term_decl list) : (term -> term IMap.t) parsing =
+  match t with
+    | [Term _] -> assert false
+    | Term hd::tl -> seq_operator match_wspace (rule_decl tl) (fun _ tl t -> IMap.add hd t tl)
+    | _ -> assert false
 
-let match_int : int parsing = fun _ _ (s, pos) ->
-  if String.length s <= pos || s.[pos] < '0' || s.[pos] > '9'
-  then None
-  else
-    let rec aux pos n =
-      if String.length s <= pos || s.[pos] < '0' || s.[pos] > '9'
-      then Some (n, (s, pos))
-      else aux (pos + 1) (n * 10 + int_of_char s.[pos] - int_of_char '0')
-    in aux pos 0
+let build_fold_right_inner (t : term_decl list) : (term -> term IMap.t) parsing =
+  match extract_last t with
+    | (Term _, []) -> assert false
+    | (Term hd, tl) -> seq_operator (rule_decl tl) match_wspace (fun tl _ t -> IMap.add hd t tl)
+    | _ -> assert false
 
-let match_add : (int -> int) parsing =
-    combine_rules (match_char '+') (get_rules Ints) (fun _ j i -> i + j)
-
-let match_sub : (int -> int) parsing =
-    combine_rules (match_char '-') (get_rules Ints) (fun _ j i -> i - j)
-
-let match_mul : (int -> int) parsing =
-    combine_rules (match_char '*') (get_rules Ints) (fun _ j i -> i * j)
-
-let match_div : (int -> int) parsing =
-    combine_rules (match_char '/') (get_rules Ints) (fun _ j i -> i / j)
-
-let add_custom_rule (type a) (ps : parser_state) (prio : int) : a parser_rule -> a parsing -> unit = function
-  | Custom _ -> failwith "NYI"
-  | Ints -> fun rule ->
-    begin match ps.ints.(prio) with
-      | NoRule -> ps.ints.(prio) <- BasicRules [rule]
-      | BasicRules l -> ps.ints.(prio) <- BasicRules (rule::l)
-      | _ -> failwith "All ready a left associative rule at this priority"
+let rec subst (map : term IMap.t) (t : term) : term = match t.term with
+  | Var (v, _) ->
+    begin match IMap.find_opt v map with
+    | None -> t
+    | Some t -> t
     end
-  | Units -> fun rule ->
-    begin match ps.units.(prio) with
-      | NoRule -> ps.units.(prio) <- BasicRules [rule]
-      | BasicRules l -> ps.units.(prio) <- BasicRules (rule::l)
-      | _ -> failwith "All ready a left associative rule at this priority"
+  | App (t1, t2) -> {t with term = App (subst map t1, subst map t2)}
+  | Lam (id, t1, t2) ->
+    begin match IMap.find_opt id map with
+      | Some {term = Var (v, _); _} -> {t with term = Lam (v, subst map t1, subst map t2)}
+      | _ -> {t with term = Lam (id, subst map t1, subst map t2)}
     end
-  | Terms -> fun rule ->
-    begin match ps.terms.(prio) with
-      | NoRule -> ps.terms.(prio) <- BasicRules [rule]
-      | BasicRules l -> ps.terms.(prio) <- BasicRules (rule::l)
-      | _ -> failwith "All ready a left associative rule at this priority"
+  | Pi (id, t1, t2) ->
+    begin match IMap.find_opt id map with
+      | None -> {t with term = Pi (id, subst map t1, subst map t2)}
+      | Some t1 -> match t1.term with
+        | Var (v, _) -> {t with term = Pi (v, subst map t1, subst map t2)}
+        | _ -> {t with term = Pi (id, subst map t1, subst map t2)}
     end
-      
-let add_left_assoc (type a) (ps : parser_state) (prio : int) : a parser_rule -> (a->a) parsing -> unit = function
-  | Custom _ -> failwith "NYI"
-  | Ints -> fun rule ->
-    begin match ps.ints.(prio) with
-      | NoRule -> ps.ints.(prio) <- LeftAssoc [rule]
-      | LeftAssoc l -> ps.ints.(prio) <- LeftAssoc (rule::l)
-      | _ -> failwith "All ready a non-left associative rule at this priority"
-    end
-  | Units -> fun rule ->
-    begin match ps.units.(prio) with
-      | NoRule -> ps.units.(prio) <- LeftAssoc [rule]
-      | LeftAssoc l -> ps.units.(prio) <- LeftAssoc (rule::l)
-      | _ -> failwith "All ready a non-left associative rule at this priority"
-    end
-  | Terms -> fun rule ->
-    begin match ps.terms.(prio) with
-      | NoRule -> ps.terms.(prio) <- LeftAssoc [rule]
-      | LeftAssoc l -> ps.terms.(prio) <- LeftAssoc (rule::l)
-      | _ -> failwith "All ready a non-left associative rule at this priority"
-    end
-      
-let p_state = {
-  units = Array.make (max_prio + 1) NoRule;
-  ints = Array.make (max_prio + 1) NoRule;
-  terms = Array.make (max_prio + 1) NoRule;
-}
+  | Op _ | Const _ -> t
 
+let build_parsing (r : (term -> term IMap.t) parsing) (t : term): (term -> term) parsing =
+  map r (fun map t' -> subst (map t') t)
 
-let parse (parser : parser_state) rule s =
-  match get_rules rule max_prio parser (s, 0) with
-  | Some (v, (_, p)) when p = String.length s -> Some v
-  | _ -> None
+let add_loc (t : naked_term) : term =
+  {term = t; loc = ("no-name", 0, 0)}
+
+let wrap_loc : naked_term parsing -> term parsing = fun r ->
+  seq_operator
+      get_loc
+      (seq_operator r get_loc (fun v l -> (v, l)))
+      (fun loc_start (t, _loc_end) -> {term = t; loc = loc_start})
+
+let () = add_custom_rule p_state 0 terms match_var
+
+let () = add_right_assoc p_state 80 terms
+  (match parse_full_raw p_state id_decls "'\\' v ':' x '->' y" with
+  | None -> assert false
+  | Some f -> build_parsing (build_fold_right_inner (handle_ident (ISet.add "v" ISet.empty) f)) (add_loc (Lam ("v", add_loc (Var ("x", None)), add_loc (Var ("y", None))))))
+
+let () = add_right_assoc p_state 80 terms
+  (match parse_full_raw p_state id_decls "'Pi ' v ':' x ',' y" with
+  | None -> assert false
+  | Some f -> build_parsing (build_fold_right_inner (handle_ident (ISet.add "v" ISet.empty) f)) (add_loc (Pi ("v", add_loc (Var ("x", None)), add_loc (Var ("y", None))))))
+
+let () = add_left_assoc p_state 40 terms
+  (match parse_full_raw p_state id_decls "x y" with
+  | None -> assert false
+  | Some f -> build_parsing (build_fold_left_inner (handle_ident ISet.empty f)) (add_loc (App (add_loc (Var ("x", None)), add_loc (Var ("y", None))))))
+
+let match_assoc =
+  seq_operator (
+    or_operator
+      (map (match_string "left-assoc") (fun () -> LeftAssoc))
+      (or_operator
+        (map (match_string "right-assoc") (fun () -> RightAssoc))
+        (map (match_string "no-assoc") (fun () -> NoAssoc))
+      )
+    )
+    (
+      not_operator (match_fchar (fun c -> c <> ' '))
+    )
+    (fun a () -> a)
+
+let () = add_custom_rule p_state 0 default (
+  seq_operator
+    (seq_operator
+      (seq_operator
+        (seq_operator (match_string "Notation") (ws_before (match_char '\"')) (fun () () -> ()))
+        (seq_operator (ws_before id_decls) (ws_before (match_char '\"')) (fun decl () -> decl))
+        (fun () decl -> decl))
+      (seq_operator
+        (seq_operator (ws_before (match_string ":=")) (ws_before (match_char '(')) (fun () () -> ()))
+        (seq_operator (map (ws_before (lift_prio (get_rules terms))) (fun t -> t)) (ws_before (match_char ')')) (fun t () -> t))
+        (fun () t -> t))
+      (fun d t -> (d, t)))
+    (seq_operator
+        (ws_before match_assoc)
+        (ws_before match_int)
+        (fun a i -> (i, a)))
+    (fun (decl, t) (prio, assoc) -> Notation (decl, prio, assoc, [], t))
+  |> ws_before
+)
