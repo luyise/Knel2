@@ -2,6 +2,8 @@ open Knel_lib
 open Parser
 open P
 
+let p_state = new_p_state ()
+
 let is_some = function
   | Some _ -> true
   | None -> false

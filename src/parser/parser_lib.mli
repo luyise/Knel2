@@ -2,6 +2,10 @@ type parsing_state
 
 val get_pos : parsing_state -> Syntax.position
 
+type 'a parsing_error =
+  | Value of 'a * parsing_state
+  | Err of Syntax.position
+
 module Make : functor (Elt : sig type t end) ->
   sig
     type 'a parsing
@@ -47,11 +51,14 @@ module Make : functor (Elt : sig type t end) ->
       parser_state -> int -> 'a parser_rule -> ('a -> 'a) parsing -> unit
     val gen_p_state : unit -> parser_state
 
+    val create_state : string -> string -> parsing_state
+
     val check_finished : parsing_state -> bool
+    val check_finished_with_ws : parsing_state -> bool
 
     val change_str : parsing_state -> string -> parsing_state * int
 
-    val parse_single : parser_state -> 'a parser_rule -> parsing_state -> ('a * parsing_state) option 
+    val parse_single : parser_state -> 'a parser_rule -> parsing_state -> 'a parsing_error
     val restart : parsing_state -> parsing_state
 
     val parse_full : parser_state -> 'a parser_rule -> string -> 'a option

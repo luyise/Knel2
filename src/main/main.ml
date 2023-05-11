@@ -6,17 +6,19 @@ open P
 open Context
 open Beta
 
-let () =
-  let _ = match parse_full p_state terms "\\x:i->x"
-  with
-    | None -> failwith "Parse error"
-    | Some tm ->
-        pp_term Format.std_formatter tm;
-        Format.print_flush ();
-        print_endline "";
-        let tm_typ = typ std_rules ["i"] [("i", wrap_nterm (UU(0)))] tm in
-        pp_term Format.std_formatter tm_typ;
-        Format.print_flush ();
-        print_endline "";
-  in
-  print_endline "Hello world"
+let files_to_compile = ref []
+
+let set_file f = files_to_compile := f :: !files_to_compile
+
+let () = Config.parse_arguments set_file
+
+let main () =
+    match !files_to_compile with
+    | [h] ->
+      let () = Read_file.check_file_name h in
+      Read_file.read_file h
+    | _ ->
+        print_endline Config.usage;
+        exit 1
+
+let () = main ()

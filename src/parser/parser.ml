@@ -1,5 +1,8 @@
+
 open Syntax
 
+module IMap = Map.Make(String)
+module ISet = Set.Make(String)
 
 type term_decl =
   | Symbol of string
@@ -17,17 +20,13 @@ type closing =
   | Drop
 
 type declaration =
-  | Notation of term_decl list * int * associativity * ident list * term
+  | Notation of term_decl list * int * associativity * ISet.t * term
   | StartTheorem of ident * term
   | CloseProof of closing
   | Tactic of term
 
-module IMap = Map.Make(String)
-module ISet = Set.Make(String)
 module P = Parser_lib.Make(struct type t = declaration end)
 open P
-
-let p_state = gen_p_state ()
 
 let id_decl : term_decl parsing =
   or_operator
@@ -122,20 +121,20 @@ let wrap_loc : naked_term parsing -> term parsing = fun r ->
       (seq_operator r get_loc (fun v l -> (v, l)))
       (fun loc_start (t, _loc_end) -> {term = t; loc = loc_start})
 
-let () = add_custom_rule p_state 0 terms match_var
+let p_state_empty = gen_p_state ()
 
-let () = add_right_assoc p_state 80 terms
-  (match parse_full_raw p_state id_decls "'\\' v ':' x '->' y" with
+let parse_lam = 
+  (match parse_full_raw p_state_empty id_decls "'\\' v ':' x '->' y" with
   | None -> assert false
   | Some f -> build_parsing (build_fold_right_inner (handle_ident (ISet.add "v" ISet.empty) f)) (add_loc (Lam ("v", add_loc (Var ("x", None)), add_loc (Var ("y", None))))))
 
-let () = add_right_assoc p_state 80 terms
-  (match parse_full_raw p_state id_decls "'Pi ' v ':' x ',' y" with
+let parse_pi =
+  (match parse_full_raw p_state_empty id_decls "'Pi ' v ':' x ',' y" with
   | None -> assert false
   | Some f -> build_parsing (build_fold_right_inner (handle_ident (ISet.add "v" ISet.empty) f)) (add_loc (Pi ("v", add_loc (Var ("x", None)), add_loc (Var ("y", None))))))
 
-let () = add_left_assoc p_state 40 terms
-  (match parse_full_raw p_state id_decls "x y" with
+let parse_app =
+  (match parse_full_raw p_state_empty id_decls "x y" with
   | None -> assert false
   | Some f -> build_parsing (build_fold_left_inner (handle_ident ISet.empty f)) (add_loc (App (add_loc (Var ("x", None)), add_loc (Var ("y", None))))))
 
@@ -149,37 +148,31 @@ let match_assoc =
       )
     )
     (
-      not_operator (match_fchar (fun c -> c <> ' '))
+      not_operator (match_fchar (fun c -> c <> ' ' && c <> '\t' && c <> '\n'))
     )
     (fun a () -> a)
+    
 
-let () = add_custom_rule p_state 30 default (
-  seq_operator
-    (seq_operator
-      (seq_operator
-        (seq_operator (match_string "Notation") (ws_before (match_char '\"')) (fun () () -> ()))
-        (seq_operator (ws_before id_decls) (ws_before (match_char '\"')) (fun decl () -> decl))
-        (fun () decl -> decl))
-      (seq_operator
-        (seq_operator (ws_before (match_string ":=")) (ws_before (match_char '(')) (fun () () -> ()))
-        (seq_operator (map (ws_before (lift_prio (get_rules terms))) (fun t -> t)) (ws_before (match_char ')')) (fun t () -> t))
-        (fun () t -> t))
-      (fun d t -> (d, t)))
-    (seq_operator
-      (seq_operator (ws_before match_assoc) (ws_before match_int) (fun a i -> (i, a)))
-      (ws_before (match_char '.'))
-      (fun p () -> p))
-    (fun (decl, t) (prio, assoc) -> Notation (decl, prio, assoc, [], t))
-  |> ws_before
-)
-
-let () = add_custom_rule p_state 0 default
+let parse_notation =
   (seq_operator
-    (lift_prio (ws_before (get_rules terms)))
-    (ws_before (match_char '.'))
-    (fun t () -> Tactic t))
-
-let () = add_custom_rule p_state 30 default
+      (seq_operator
+        (seq_operator
+          (seq_operator (match_string "Notation") (ws_before (match_char '\"')) (fun () () -> ()))
+          (seq_operator (ws_before id_decls) (ws_before (match_char '\"')) (fun decl () -> decl))
+          (fun () decl -> decl))
+        (seq_operator
+          (seq_operator (ws_before (match_string ":=")) (ws_before (match_char '(')) (fun () () -> ()))
+          (seq_operator (map (ws_before (lift_prio (get_rules terms))) (fun t -> t)) (ws_before (match_char ')')) (fun t () -> t))
+          (fun () t -> t))
+        (fun d t -> (d, t)))
+      (seq_operator
+        (seq_operator (ws_before match_assoc) (ws_before match_int) (fun a i -> (i, a)))
+        (ws_before (match_char '.'))
+        (fun p () -> p))
+      (fun (decl, t) (prio, assoc) -> Notation (decl, prio, assoc, ISet.empty, t))
+    |> ws_before)
+    
+let parse_theorem =
   (seq_operator
     (seq_operator
       (seq_operator (ws_before (match_string "Theorem")) (ws_before_ne match_alphas) (fun () n -> n))
@@ -188,11 +181,35 @@ let () = add_custom_rule p_state 30 default
     (ws_before (match_char '.'))
     (fun d () -> d))
 
-let () = add_custom_rule p_state 30 default
+let parse_tactic =
+  (seq_operator
+    (lift_prio (ws_before (get_rules terms)))
+    (ws_before (match_char '.'))
+    (fun t () -> Tactic t))
+
+let parse_qed =
   (seq_operator (ws_before (match_string "Qed")) (ws_before (match_char '.')) (fun () () -> CloseProof Qed))
 
-let () = add_custom_rule p_state 30 default
+let parse_admit =
   (seq_operator (ws_before (match_string "Admit")) (ws_before (match_char '.')) (fun () () -> CloseProof Admit))
 
-let () = add_custom_rule p_state 30 default
+let parse_drop =
   (seq_operator (ws_before (match_string "Drop")) (ws_before (match_char '.')) (fun () () -> CloseProof Drop))
+
+let new_p_state () =
+  let p_state = gen_p_state () in
+
+  let () = add_custom_rule p_state 0 terms match_var in
+  let () = add_right_assoc p_state 80 terms parse_lam in
+  let () = add_right_assoc p_state 80 terms parse_pi in
+  let () = add_left_assoc p_state 40 terms parse_app in
+
+
+  let () = add_custom_rule p_state 30 default parse_notation in
+  let () = add_custom_rule p_state 0 default parse_tactic in
+  let () = add_custom_rule p_state 30 default parse_theorem in
+  let () = add_custom_rule p_state 30 default parse_qed in
+  let () = add_custom_rule p_state 30 default parse_admit in
+  let () = add_custom_rule p_state 30 default parse_drop in
+
+  p_state
