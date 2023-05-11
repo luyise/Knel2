@@ -20,12 +20,15 @@ and term =
   ; loc : position
   }
 
+let bullshit_loc : position = ("no_name", (-1), (-1))
+let wrap_nterm (tm : naked_term) = {term = tm; loc = bullshit_loc}
+
 let rec pp_term fmt t = pp_nterm fmt (t.term)
 and pp_nterm fmt = function
   | Var (v, _) -> Format.fprintf fmt "%s" v
   | Lam (i, t1, t2) -> Format.fprintf fmt "%s : %a -> %a" i pp_term t1 pp_term t2
   | App (t1, t2) -> Format.fprintf fmt "%a (%a)" pp_term t1 pp_term t2
-  | Pi (i, t1, t2) -> Format.fprintf fmt "\\8719 %s : %a, %a" i pp_term t1 pp_term t2
+  | Pi (i, t1, t2) -> Format.fprintf fmt "\u{220F} %s : %a, %a" i pp_term t1 pp_term t2
   | Op t -> Format.fprintf fmt "(%a)" pp_term t
   | Const (c, _) -> Format.fprintf fmt "%s" c
-  | UU k -> Format.fprintf fmt "\\119984 %i" k
+  | UU k -> Format.fprintf fmt "\u{1D4E4} %i" k

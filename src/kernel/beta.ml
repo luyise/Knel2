@@ -17,6 +17,21 @@ let (beta_redex : beta_rule)
         )
     | _ -> tm, false
 
+let (op_redex : beta_rule)
+= fun
+  (_id_pool : ident list)
+  (tm : term)
+->
+match tm.term with
+  | Op( {term = Op(tm'); loc = _} ) ->
+      ( tm'
+        ,
+        true
+      )
+  | _ -> tm, false
+
+let std_rules : beta_rule list = [beta_redex; op_redex]
+
 (* Apply the first possible reduction in the list of rules given *)
 let rec apply_custom_red
   (beta_rules : beta_rule list) (* List of custom beta-reduction rules *)

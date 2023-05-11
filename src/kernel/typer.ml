@@ -64,11 +64,11 @@ let rec typ
           | _ -> raise (TypeError(tm.loc, tm, None))
         end
     | Pi (id, id_typ, body) ->
-      let lvl1 = begin match 
-        (typ 
-          beta_rules 
-          id_pool 
-          ctx 
+      let lvl1 = begin match
+        (typ
+          beta_rules
+          id_pool
+          ctx
           id_typ).term
         with
           | UU(lvl1) -> lvl1

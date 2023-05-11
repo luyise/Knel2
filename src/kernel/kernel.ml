@@ -1,6 +1,6 @@
-(*
-
-This is the kernel of Knel2
-Although a bit too much empty for now...
-
-*)
+open Alpha
+open Beta
+open Context
+open Substitution
+open Syntax
+open Typer
