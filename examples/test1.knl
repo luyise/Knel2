@@ -1,0 +1,8 @@
+
+Notation "x '+' y" :=
+    (add x y)
+    left-assoc 40.
+
+Theorem name:
+    Pi x:i, i + i.
+Drop.
