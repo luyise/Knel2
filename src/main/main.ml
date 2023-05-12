@@ -1,10 +1,4 @@
 open Knel_lib
-open Syntax
-open Typer
-open Parser
-open P
-open Context
-open Beta
 
 let files_to_compile = ref []
 

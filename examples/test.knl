@@ -1,0 +1,5 @@
+Open testB.
+Qed.
+Theorem name:
+    Pi x:i, i + i.
+Drop.

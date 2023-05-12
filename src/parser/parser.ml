@@ -24,6 +24,7 @@ type declaration =
   | StartTheorem of ident * term
   | CloseProof of closing
   | Tactic of term
+  | Open of string list
 
 module P = Parser_lib.Make(struct type t = declaration end)
 open P
@@ -196,6 +197,14 @@ let parse_admit =
 let parse_drop =
   (seq_operator (ws_before (match_string "Drop")) (ws_before (match_char '.')) (fun () () -> CloseProof Drop))
 
+let parse_open =
+  (seq_operator (ws_before (match_string "Open"))
+      (ws_before_ne (fold_right
+            (seq_operator match_alphas (match_char '.') (fun name () -> name))
+            (seq_operator match_alphas (match_char '.') (fun name () -> [name]))
+            List.cons))
+    (fun () t -> Open t))
+
 let new_p_state () =
   let p_state = gen_p_state () in
 
@@ -211,5 +220,6 @@ let new_p_state () =
   let () = add_custom_rule p_state 30 default parse_qed in
   let () = add_custom_rule p_state 30 default parse_admit in
   let () = add_custom_rule p_state 30 default parse_drop in
+  let () = add_custom_rule p_state 30 default parse_open in
 
   p_state
