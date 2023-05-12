@@ -49,7 +49,7 @@ rule next_tokens = parse
     | "@term"       { TERM_DECL }
     | "@ident"      { IDENT_DECL }
     | "@rules"      { RULES }
-    | "\"" str as s "\"" { STRING s}
+    | "\"" (str as s) "\"" { STRING s}
     | "@pi"         { PI }
     | "@lam"        { LAM }
     | "@app"        { APP }
